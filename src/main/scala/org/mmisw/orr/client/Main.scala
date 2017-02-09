@@ -2,8 +2,8 @@ package org.mmisw.orr.client
 
 import java.io.{File, FileInputStream}
 
-import com.hp.hpl.jena.ontology.{OntDocumentManager, OntModel, OntModelSpec}
-import com.hp.hpl.jena.rdf.model.ModelFactory
+import org.apache.jena.ontology.{OntDocumentManager, OntModel, OntModelSpec}
+import org.apache.jena.rdf.model.ModelFactory
 import org.joda.time.DateTime
 import org.json4s._
 import org.json4s.ext.JodaTimeSerializers
