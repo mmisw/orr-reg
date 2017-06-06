@@ -1,9 +1,7 @@
 package org.mmisw.orr.client
 
-import java.io.{File, FileInputStream}
+import java.io.File
 
-import org.apache.jena.ontology.{OntDocumentManager, OntModel, OntModelSpec}
-import org.apache.jena.rdf.model.ModelFactory
 import org.joda.time.DateTime
 import org.json4s._
 import org.json4s.ext.JodaTimeSerializers
@@ -11,15 +9,15 @@ import org.json4s.native.JsonMethods._
 import org.json4s.native.Serialization
 import org.json4s.native.Serialization.writePretty
 
-import scala.collection.JavaConversions._
 import scala.collection.mutable.{Set ⇒ MutableSet}
 import scalaj.http.{Http, HttpOptions, HttpResponse, MultiPart}
 
 case class Opts(
                  url: Option[String] = None,
                  maxDepth: Int = 0,
+                 ontLib: String = "jena",
                  newVersion: Boolean = false,
-                 unregister: Boolean = false,
+                 action: Option[String] = None,
                  orr: Orr = Orr()
                )
 
@@ -49,8 +47,13 @@ class Main(opts: Opts) {
   private implicit val serFormats = Serialization.formats(NoTypeHints)
 
   private val action: OntologyAction =
-    if (opts.unregister) new UnregisterAction
-    else new RegisterAction
+    opts.action match {
+      case Some("register")   ⇒ new RegisterAction
+      case Some("unregister") ⇒ new UnregisterAction
+      case Some("load")       ⇒ LoadOntModelAction
+      case Some(a) ⇒ throw new Exception(s"unrecognized action: $a")
+      case None    ⇒ throw new Exception(s"unspecified action")
+    }
 
   def run(): Unit = {
     processedUris.clear()
@@ -59,7 +62,10 @@ class Main(opts: Opts) {
     println(s"\nexcluded: $excludeUris\n")
   }
 
-  case class ActionInfo(uri: String, bytes: Array[Byte])
+  case class ActionInfo(uri: String,
+                        bytes: Array[Byte],
+                        file: File
+                       )
 
   abstract class OntologyAction {
     def doIt(info: ActionInfo): Unit
@@ -212,6 +218,18 @@ class Main(opts: Opts) {
     }
   }
 
+  object LoadOntModelAction extends OntologyAction {
+    def doIt(info: ActionInfo): Unit = loadOntModel(info)
+  }
+
+  private def loadOntModel(info: ActionInfo): Unit = {
+    opts.ontLib match {
+      case "jena"   ⇒ ontHelper.JenaOntology(info.uri)
+      case "owlapi" ⇒ ontHelper.OwlApiOntology(info.uri)
+      case s        ⇒ throw new Exception("unrecognized library: " + s)
+    }
+  }
+
   private def processOntology(uri: String, depth: Int = 0): Unit = {
     if (!processedUris.contains(uri)) {
       processedUris.add(uri)
@@ -219,12 +237,11 @@ class Main(opts: Opts) {
       val (file, bytes) = download(uri)
       println("     -> " + file)
 
-      action.doIt(ActionInfo(uri, bytes))
+      action.doIt(ActionInfo(uri, bytes, file))
 
       if (depth < opts.maxDepth) {
-        val model = loadModel(uri, file)
-        val uris = model.listImportedOntologyURIs(false)
-        uris foreach { processOntology(_, depth + 1) }
+        val model = ontHelper.JenaOntology(uri, Some(file))
+        model.importedUris foreach { processOntology(_, depth + 1) }
       }
     }
   }
@@ -254,16 +271,6 @@ class Main(opts: Opts) {
           case None ⇒ (initialUri, None)
         }
     }
-  }
-
-  private def loadModel(uri: String, file: File): OntModel = {
-    val spec = new OntModelSpec(OntModelSpec.OWL_MEM)
-    spec.setDocumentManager(new OntDocumentManager)
-    val model = ModelFactory.createOntologyModel(spec, null)
-    model.setDynamicImports(false)
-    model.getDocumentManager.setProcessImports(false)
-    model.read(new FileInputStream(file), uri)
-    model
   }
 
   // copied from orr-ont's OntService
@@ -325,9 +332,17 @@ object Main {
         action((x, c) => c.copy(orr = c.orr.copy(password = Some(x)))).
         text("Password")
 
+      opt[String]("action").optional().
+        action((x, c) => c.copy(action = Some(x))).
+        text("One of register, unregister, load.")
+
+      opt[String]("ont-lib").optional().
+        action((x, c) => c.copy(ontLib = x)).
+        text("One of jena, owlapi (default: jena")
+
       opt[String]("org").optional().
         action((x, c) => c.copy(orr = c.orr.copy(orgName = Some(x)))).
-        text("Owning organization (submitting user)")
+        text("Owning organization for registration (default: submitting user)")
 
       opt[String]('v', "visibility").optional().
         action((x, c) => c.copy(orr = c.orr.copy(visibility = Some(x)))).
@@ -340,10 +355,6 @@ object Main {
       opt[Unit]("new-version").optional().
         action((_, c) => c.copy(newVersion = true)).
         text("Register new version if ontology already exists")
-
-      opt[Unit]("unregister").optional().
-        action((_, c) => c.copy(unregister = true)).
-        text("Unregister")
 
       help("help").text("Print this usage text")
     }
