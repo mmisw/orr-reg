@@ -13,12 +13,13 @@ import scala.collection.mutable.{Set ⇒ MutableSet}
 import scalaj.http.{Http, HttpOptions, HttpResponse, MultiPart}
 
 case class Opts(
-                 url: Option[String] = None,
-                 maxDepth: Int = 0,
-                 ontLib: String = "jena",
-                 newVersion: Boolean = false,
-                 action: Option[String] = None,
-                 orr: Orr = Orr()
+                 ontIri:       Option[String] = None,
+                 maxDepth:     Int = 0,
+                 irisFilename: Option[String] = None,
+                 ontLib:       String = "jena",
+                 newVersion:   Boolean = false,
+                 action:       Option[String] = None,
+                 orr:          Orr = Orr()
                )
 
 case class Orr(
@@ -37,8 +38,8 @@ class Main(opts: Opts) {
 
   // ad hoc convenience
   private val excludeUris = List(
-    "http://sweet.jpl.nasa.gov/2.3/sweetAll.owl",
-    "http://sweet.jpl.nasa.gov/2.3/humanAgriculture.owl"
+//    "http://sweet.jpl.nasa.gov/2.3/sweetAll.owl",
+//    "http://sweet.jpl.nasa.gov/2.3/humanAgriculture.owl"
   )
 
   private val processedUris: MutableSet[String] = MutableSet()
@@ -57,21 +58,32 @@ class Main(opts: Opts) {
 
   def run(): Unit = {
     processedUris.clear()
-    processOntology(opts.url.get)
+
+    (opts.ontIri, opts.irisFilename) match {
+      case (Some(ontIri), None)   ⇒ processOntologyIri(ontIri)
+      case (None, Some(filename)) ⇒ processOntologyIris(filename)
+
+      case _ ⇒
+        throw new Exception(s"one of --ontIri and --ontIris must be provided")
+    }
+
     println(s"\nprocessed ontologies: ${processedUris.size}")
     println(s"\nexcluded: $excludeUris\n")
   }
 
-  case class ActionInfo(uri: String,
-                        bytes: Array[Byte],
-                        file: File
+  case class ActionInfo(uri:   String,
+                        bytes: Option[Array[Byte]] = None,
+                        file:  Option[File] = None
                        )
 
   abstract class OntologyAction {
+    def requiresDownload: Boolean
     def doIt(info: ActionInfo): Unit
   }
 
   class RegisterAction extends OntologyAction {
+    def requiresDownload: Boolean = true
+
     def doIt(info: ActionInfo): Unit = {
       if (excludeUris.contains(info.uri)) {
         println("-> excluded from registration: " + info.uri)
@@ -91,12 +103,12 @@ class Main(opts: Opts) {
 
       val response: HttpResponse[String] = Http(route)
         .timeout(connTimeoutMs = 5*1000, readTimeoutMs = 60*1000)
-        .postMulti(MultiPart("file", "filename", "text/plain", info.bytes))
+        .postMulti(MultiPart("file", "filename", "text/plain", info.bytes.get))
         .auth(userName, password)
         .asString
 
       if (response.code != 200) {
-        throw new Exception(s"error uploading uri=${info.uri}: response=" + response)
+        throw new Exception(s"error uploading iri=${info.uri}: response=" + response)
       }
 
       val json = parse(response.body)
@@ -104,7 +116,7 @@ class Main(opts: Opts) {
     }
 
     /**
-      * @return Some(result) is registration completed.
+      * @return Some(result) if registration completed.
       *         None if ontology already registered and newVersion option was not indicated.
       */
     private def register(initialUri: String, ufi: UploadedFileInfo): Option[OntologyRegistrationResult] = {
@@ -120,7 +132,7 @@ class Main(opts: Opts) {
       }
 
       val params = collection.mutable.MutableList[(String, String)](
-        "uri" → actualUri
+        "iri" → actualUri
         , "name" → name
         , "userName" → userName
         , "uploadedFilename" → ufi.filename
@@ -132,7 +144,7 @@ class Main(opts: Opts) {
       opts.orr.status     foreach { s ⇒ params += ("status" → s) }
 
       val route = opts.orr.endpoint.get + "/v0/ont"
-      println(s"    registering uri=$actualUri")
+      println(s"    registering iri=$actualUri")
 
       val responseOpt: Option[HttpResponse[String]] = {
         val postResponse: HttpResponse[String] = Http(route)
@@ -158,7 +170,7 @@ class Main(opts: Opts) {
               Some(putResponse)
             }
             else {
-              throw new Exception(s"error registering new version of uri=$actualUri: postResponse=" + putResponse)
+              throw new Exception(s"error registering new version of iri=$actualUri: postResponse=" + putResponse)
             }
           }
           else {
@@ -167,7 +179,7 @@ class Main(opts: Opts) {
           }
         }
         else {
-          throw new Exception(s"error registering uri=$actualUri: postResponse=" + postResponse)
+          throw new Exception(s"error registering iri=$actualUri: postResponse=" + postResponse)
         }
       }
 
@@ -179,6 +191,8 @@ class Main(opts: Opts) {
   }
 
   class UnregisterAction extends OntologyAction {
+    def requiresDownload: Boolean = false
+
     def doIt(info: ActionInfo): Unit = {
       if (excludeUris.contains(info.uri)) {
         println("-> excluded from unregistration: " + info.uri)
@@ -205,11 +219,11 @@ class Main(opts: Opts) {
 
     def unregister(uri: String): HttpResponse[String] = {
       val route = opts.orr.endpoint.get + "/v0/ont"
-      println(s"    unregistering uri=$uri")
+      println(s"    unregistering iri=$uri")
       Http(route)
         .timeout(connTimeoutMs = 5*1000, readTimeoutMs = 60*1000)
         .params(Seq(
-          "uri" → uri,
+          "iri" → uri,
           "userName" → userName
         ))
         .auth(userName, password)
@@ -219,6 +233,7 @@ class Main(opts: Opts) {
   }
 
   object LoadOntModelAction extends OntologyAction {
+    def requiresDownload: Boolean = true
     def doIt(info: ActionInfo): Unit = loadOntModel(info)
   }
 
@@ -230,18 +245,41 @@ class Main(opts: Opts) {
     }
   }
 
-  private def processOntology(uri: String, depth: Int = 0): Unit = {
-    if (!processedUris.contains(uri)) {
-      processedUris.add(uri)
-      println("\n[%2d] %s" format (depth, uri))
-      val (file, bytes) = download(uri)
+  private def createActionInfo(iri: String, action: OntologyAction): ActionInfo = {
+    if (action.requiresDownload) {
+      val (file, bytes) = download(iri)
       println("     -> " + file)
+      ActionInfo(iri, Some(bytes), Some(file))
+    }
+    else ActionInfo(iri)
+  }
 
-      action.doIt(ActionInfo(uri, bytes, file))
+  private def processOntologyIri(iri: String, depth: Int = 0): Unit = {
+    if (!processedUris.contains(iri)) {
+      processedUris.add(iri)
+      println("\n[%2d] %s" format (depth, iri))
+
+      val actionInfo = createActionInfo(iri, action)
+      action.doIt(actionInfo)
 
       if (depth < opts.maxDepth) {
-        val model = ontHelper.JenaOntology(uri, Some(file))
-        model.importedUris foreach { processOntology(_, depth + 1) }
+        val model = ontHelper.JenaOntology(iri, Some(actionInfo.file.get))
+        model.importedUris foreach { processOntologyIri(_, depth + 1) }
+      }
+    }
+  }
+
+  private def processOntologyIris(irisFilename: String): Unit = {
+    println(s"processing IRIs from $irisFilename:")
+    io.Source.fromFile(irisFilename).getLines()
+      .map(_.trim).filterNot(_.isEmpty).filterNot(_.startsWith("#")).map(_.replaceAll("""^"|"$""", "")
+    ) foreach { iri ⇒
+      if (!processedUris.contains(iri)) {
+        processedUris.add(iri)
+        println(s"   iri: $iri")
+
+        val actionInfo = createActionInfo(iri, action)
+        action.doIt(actionInfo)
       }
     }
   }
@@ -275,8 +313,8 @@ class Main(opts: Opts) {
 
   // copied from orr-ont's OntService
   /**
-    * If uri starts with "http:" or "https:", returns a Some
-    * with the same uri but with the scheme replaced for the other.
+    * If iri starts with "http:" or "https:", returns a Some
+    * with the same iri but with the scheme replaced for the other.
     * Otherwise, None.
     */
   private def replaceHttpScheme(uri: String): Option[String] = {
@@ -312,13 +350,17 @@ object Main {
     val parser = new scopt.OptionParser[Opts]("orr-reg") {
       head("orr-reg", "0.0.1")
 
-      opt[String]('o', "ont").required().
-        action((x, c) => c.copy(url = Some(x))).
-        text(s"Ontology URL")
+      opt[String]('o', "ontIri").optional().
+        action((x, c) => c.copy(ontIri = Some(x))).
+        text(s"Ontology IRI")
 
       opt[Int]('d', "depth").action((x, c) =>
         c.copy(maxDepth = x)).
-        text("Max depth processing imported ontologies (0)")
+        text("In combination with --ontIri, max depth for processing imported ontologies (0)")
+
+      opt[String]('l', "ontIris").optional().
+        action((x, c) => c.copy(irisFilename = Some(x))).
+        text(s"File with explicit list of ontology IRIs")
 
       opt[String]("orr").optional().
         action((x, c) => c.copy(orr = c.orr.copy(endpoint = Some(x)))).
@@ -338,7 +380,7 @@ object Main {
 
       opt[String]("ont-lib").optional().
         action((x, c) => c.copy(ontLib = x)).
-        text("One of jena, owlapi (default: jena")
+        text("One of jena, owlapi (default: jena)")
 
       opt[String]("org").optional().
         action((x, c) => c.copy(orr = c.orr.copy(orgName = Some(x)))).
