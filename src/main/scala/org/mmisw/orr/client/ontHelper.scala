@@ -9,24 +9,24 @@ import org.semanticweb.owlapi.model.OWLOntology
 object ontHelper {
 
   trait Ontology {
-    def importedUris: Set[String]
+    def importedIris: Set[String]
   }
 
-  case class JenaOntology(uri: String, fileOpt: Option[File] = None) extends Ontology {
+  case class JenaOntology(iri: String, fileOpt: Option[File] = None) extends Ontology {
     import scala.collection.JavaConversions._
 
-    private val ont: OntModel = jenaHelper.loadOntModel(uri, fileOpt)
+    private val ont: OntModel = jenaHelper.loadOntModel(iri, fileOpt)
 
-    def importedUris: Set[String] = {
-      val uris = ont.listImportedOntologyURIs(false)
-      uris.toList.toSet
+    def importedIris: Set[String] = {
+      val iris = ont.listImportedOntologyURIs(false)
+      iris.toList.toSet
     }
   }
 
-  case class OwlApiOntology(uri: String, fileOpt: Option[File] = None) extends Ontology {
+  case class OwlApiOntology(iri: String, fileOpt: Option[File] = None) extends Ontology {
     private val ont: OWLOntology = owlApiHelper.loadOntModel(fileOpt.get)
 
-    def importedUris: Set[String] = {
+    def importedIris: Set[String] = {
       import scala.collection.JavaConverters._
       val d = ont.importsDeclarations()
       (d.iterator().asScala map (_.getIRI.getIRIString)).toSet

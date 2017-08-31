@@ -39,12 +39,12 @@ class Main(opts: Opts) {
   private val password: String = opts.orr.password.get
 
   // ad hoc convenience
-  private val excludeUris = List(
+  private val excludeIris = List(
 //    "http://sweet.jpl.nasa.gov/2.3/sweetAll.owl",
 //    "http://sweet.jpl.nasa.gov/2.3/humanAgriculture.owl"
   )
 
-  private val processedUris: MutableSet[String] = MutableSet()
+  private val processedIris: MutableSet[String] = MutableSet()
 
   private implicit val jsonFormats = DefaultFormats ++ JodaTimeSerializers.all
   private implicit val serFormats = Serialization.formats(NoTypeHints)
@@ -59,7 +59,7 @@ class Main(opts: Opts) {
     }
 
   def run(): Unit = {
-    processedUris.clear()
+    processedIris.clear()
 
     (opts.ontIri, opts.irisFilename) match {
       case (Some(ontIri), None)   ⇒ processOntologyIri(ontIri)
@@ -69,11 +69,11 @@ class Main(opts: Opts) {
         throw new Exception(s"one of --ontIri and --ontIris must be provided")
     }
 
-    println(s"\nprocessed ontologies: ${processedUris.size}")
-    println(s"\nexcluded: $excludeUris\n")
+    println(s"\nprocessed ontologies: ${processedIris.size}")
+    println(s"\nexcluded: $excludeIris\n")
   }
 
-  case class ActionInfo(uri:   String,
+  case class ActionInfo(iri:   String,
                         bytes: Option[Array[Byte]] = None,
                         file:  Option[File] = None
                        )
@@ -87,14 +87,14 @@ class Main(opts: Opts) {
     def requiresDownload: Boolean = true
 
     def doIt(info: ActionInfo): Unit = {
-      if (excludeUris.contains(info.uri)) {
-        println("-> excluded from registration: " + info.uri)
+      if (excludeIris.contains(info.iri)) {
+        println("-> excluded from registration: " + info.iri)
         return
       }
       val uploadResult = uploadOntology(info)
       println(s"    uploadResult: filename=${uploadResult.filename} format=${uploadResult.format}")
 
-      val registrationResult = register(info.uri, uploadResult)
+      val registrationResult = register(info.iri, uploadResult)
       println(s"    registrationResult:\n    " +
         writePretty(registrationResult).replaceAll("\n", "\n    "))
     }
@@ -110,7 +110,7 @@ class Main(opts: Opts) {
         .asString
 
       if (response.code != 200) {
-        throw new Exception(s"error uploading iri=${info.uri}: response=" + response)
+        throw new Exception(s"error uploading iri=${info.iri}: response=" + response)
       }
 
       val json = parse(response.body)
@@ -121,8 +121,8 @@ class Main(opts: Opts) {
       * @return Some(result) if registration completed.
       *         None if ontology already registered and newVersion option was not indicated.
       */
-    private def register(initialUri: String, ufi: UploadedFileInfo): Option[OntologyRegistrationResult] = {
-      val (actualUri, ontInfoOpt) = getActualUri(initialUri, ufi)
+    private def register(initialIri: String, ufi: UploadedFileInfo): Option[OntologyRegistrationResult] = {
+      val (actualIri, ontInfoOpt) = getActualIri(initialIri, ufi)
 
       val rdfsLabel = "http://www.w3.org/2000/01/rdf-schema#label"
       val name: String = ontInfoOpt match {
@@ -134,7 +134,7 @@ class Main(opts: Opts) {
       }
 
       val params = collection.mutable.MutableList[(String, String)](
-        "iri" → actualUri
+        "iri" → actualIri
         , "name" → name
         , "userName" → userName
         , "uploadedFilename" → ufi.filename
@@ -146,7 +146,7 @@ class Main(opts: Opts) {
       opts.orr.status     foreach { s ⇒ params += ("status" → s) }
 
       val route = opts.orr.endpoint.get + "/v0/ont"
-      println(s"    registering iri=$actualUri")
+      println(s"    registering iri=$actualIri")
 
       val responseOpt: Option[HttpResponse[String]] = {
         val postResponse: HttpResponse[String] = Http(route)
@@ -172,7 +172,7 @@ class Main(opts: Opts) {
               Some(putResponse)
             }
             else {
-              throw new Exception(s"error registering new version of iri=$actualUri: postResponse=" + putResponse)
+              throw new Exception(s"error registering new version of iri=$actualIri: postResponse=" + putResponse)
             }
           }
           else {
@@ -181,7 +181,7 @@ class Main(opts: Opts) {
           }
         }
         else {
-          throw new Exception(s"error registering iri=$actualUri: postResponse=" + postResponse)
+          throw new Exception(s"error registering iri=$actualIri: postResponse=" + postResponse)
         }
       }
 
@@ -196,17 +196,17 @@ class Main(opts: Opts) {
     def requiresDownload: Boolean = false
 
     def doIt(info: ActionInfo): Unit = {
-      if (excludeUris.contains(info.uri)) {
-        println("-> excluded from unregistration: " + info.uri)
+      if (excludeIris.contains(info.iri)) {
+        println("-> excluded from unregistration: " + info.iri)
         return
       }
       val response: HttpResponse[String] = {
-        val response1: HttpResponse[String] = unregister(info.uri)
+        val response1: HttpResponse[String] = unregister(info.iri)
         if (response1.code == 404) {
           println("    -> " + response1.statusLine)
-          replaceHttpScheme(info.uri) match {
-            case Some(uri2) ⇒
-              unregister(uri2)
+          replaceHttpScheme(info.iri) match {
+            case Some(iri2) ⇒
+              unregister(iri2)
 
             case None ⇒ response1
           }
@@ -219,13 +219,13 @@ class Main(opts: Opts) {
       }
     }
 
-    def unregister(uri: String): HttpResponse[String] = {
+    def unregister(iri: String): HttpResponse[String] = {
       val route = opts.orr.endpoint.get + "/v0/ont"
-      println(s"    unregistering iri=$uri")
+      println(s"    unregistering iri=$iri")
       Http(route)
         .timeout(connTimeoutMs = 5*1000, readTimeoutMs = 60*1000)
         .params(Seq(
-          "iri" → uri,
+          "iri" → iri,
           "userName" → userName
         ))
         .auth(userName, password)
@@ -241,8 +241,8 @@ class Main(opts: Opts) {
 
   private def loadOntModel(info: ActionInfo): Unit = {
     opts.ontLib match {
-      case "jena"   ⇒ ontHelper.JenaOntology(info.uri)
-      case "owlapi" ⇒ ontHelper.OwlApiOntology(info.uri)
+      case "jena"   ⇒ ontHelper.JenaOntology(info.iri)
+      case "owlapi" ⇒ ontHelper.OwlApiOntology(info.iri)
       case s        ⇒ throw new Exception("unrecognized library: " + s)
     }
   }
@@ -257,8 +257,8 @@ class Main(opts: Opts) {
   }
 
   private def processOntologyIri(iri: String, depth: Int = 0): Unit = {
-    if (!processedUris.contains(iri)) {
-      processedUris.add(iri)
+    if (!processedIris.contains(iri)) {
+      processedIris.add(iri)
       println("\n[%2d] %s" format (depth, iri))
 
       val actionInfo = createActionInfo(iri, action)
@@ -266,7 +266,7 @@ class Main(opts: Opts) {
 
       if (depth < opts.maxDepth) {
         val model = ontHelper.JenaOntology(iri, Some(actionInfo.file.get))
-        model.importedUris foreach { processOntologyIri(_, depth + 1) }
+        model.importedIris foreach { processOntologyIri(_, depth + 1) }
       }
     }
   }
@@ -276,8 +276,8 @@ class Main(opts: Opts) {
     io.Source.fromFile(irisFilename).getLines()
       .map(_.trim).filterNot(_.isEmpty).filterNot(_.startsWith("#")).map(_.replaceAll("""^"|"$""", "")
     ) foreach { iri ⇒
-      if (!processedUris.contains(iri)) {
-        processedUris.add(iri)
+      if (!processedIris.contains(iri)) {
+        processedIris.add(iri)
         println(s"   iri: $iri")
 
         val actionInfo = createActionInfo(iri, action)
@@ -317,17 +317,17 @@ class Main(opts: Opts) {
     (file, bytes)
   }
 
-  private def getActualUri(initialUri: String, ufi: UploadedFileInfo): (String, Option[PossibleOntologyInfo]) = {
-    ufi.possibleOntologyUris.get(initialUri) match {
-      case x@Some(_) ⇒ (initialUri, x)
+  private def getActualIri(initialIri: String, ufi: UploadedFileInfo): (String, Option[PossibleOntologyInfo]) = {
+    ufi.possibleOntologyIris.get(initialIri) match {
+      case x@Some(_) ⇒ (initialIri, x)
       case None ⇒
-        replaceHttpScheme(initialUri) match {
-          case Some(uri2) ⇒
-            ufi.possibleOntologyUris.get(uri2) match {
-              case x@Some(_) ⇒ (uri2, x)
-              case None ⇒ (initialUri, None)
+        replaceHttpScheme(initialIri) match {
+          case Some(iri2) ⇒
+            ufi.possibleOntologyIris.get(iri2) match {
+              case x@Some(_) ⇒ (iri2, x)
+              case None ⇒ (initialIri, None)
             }
-          case None ⇒ (initialUri, None)
+          case None ⇒ (initialIri, None)
         }
     }
   }
@@ -338,9 +338,9 @@ class Main(opts: Opts) {
     * with the same iri but with the scheme replaced for the other.
     * Otherwise, None.
     */
-  private def replaceHttpScheme(uri: String): Option[String] = {
-    if      (uri.startsWith("http:"))  Some("https:" + uri.substring("http:".length))
-    else if (uri.startsWith("https:")) Some("http:" +  uri.substring("https:".length))
+  private def replaceHttpScheme(iri: String): Option[String] = {
+    if      (iri.startsWith("http:"))  Some("https:" + iri.substring("http:".length))
+    else if (iri.startsWith("https:")) Some("http:" +  iri.substring("https:".length))
     else None
   }
 
@@ -349,14 +349,14 @@ class Main(opts: Opts) {
 case class UploadedFileInfo(userName: String,
                             filename: String,
                             format: String
-                            , possibleOntologyUris: Map[String, PossibleOntologyInfo]
+                            , possibleOntologyIris: Map[String, PossibleOntologyInfo]
                            )
 
 case class PossibleOntologyInfo(explanations: List[String],
                                 metadata: Map[String,List[String]])
 
 case class OntologyRegistrationResult(
-                                       uri:         String,
+                                       iri:         String,
                                        version:     Option[String] = None,
                                        visibility:  Option[String] = None,
                                        status:      Option[String] = None,
