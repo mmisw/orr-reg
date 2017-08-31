@@ -1,5 +1,6 @@
 2017-08-30 0.2.0
 
+- new options `--locResFrom from --locResTo to` for location resolution
 - new option `--ontIris filename` that allows to explicit list the IRIs to be processed.
   This option just used for the unregistration of all the SWEET v3 ontologies at the COR:
   

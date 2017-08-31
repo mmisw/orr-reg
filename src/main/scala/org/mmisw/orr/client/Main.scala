@@ -13,13 +13,15 @@ import scala.collection.mutable.{Set ⇒ MutableSet}
 import scalaj.http.{Http, HttpOptions, HttpResponse, MultiPart}
 
 case class Opts(
-                 ontIri:       Option[String] = None,
-                 maxDepth:     Int = 0,
-                 irisFilename: Option[String] = None,
-                 ontLib:       String = "jena",
-                 newVersion:   Boolean = false,
-                 action:       Option[String] = None,
-                 orr:          Orr = Orr()
+                 ontIri:          Option[String] = None,
+                 maxDepth:        Int = 0,
+                 irisFilename:    Option[String] = None,
+                 locResFrom:      Option[String] = None,
+                 locResTo:        Option[String] = None,
+                 ontLib:          String = "jena",
+                 newVersion:      Boolean = false,
+                 action:          Option[String] = None,
+                 orr:             Orr = Orr()
                )
 
 case class Orr(
@@ -284,15 +286,32 @@ class Main(opts: Opts) {
     }
   }
 
-  private def download(url: String): (File, Array[Byte]) = {
+  private def download(iri: String): (File, Array[Byte]) = {
+    val url = opts.locResFrom match {
+      case None ⇒ iri
+      case Some(from) ⇒
+        val re = from.r
+        val to = opts.locResTo.get
+        iri match {
+          case re(name) ⇒
+            to.replaceAllLiterally("$1", name)
+          case _ ⇒ iri
+        }
+    }
+
     val response: HttpResponse[String] = Http(url)
       .option(HttpOptions.followRedirects(true))
       .asString
+
+    if (response.code != 200)
+      throw new Exception(s"failed to retrieve url=$url => ${response.code}: ${response.body}")
+
     val file = new File("downloaded", url.replace('/', '|'))
     import java.nio.charset.StandardCharsets
     import java.nio.file.Files
     val bytes = response.body.getBytes(StandardCharsets.UTF_8)
     Files.write(file.toPath, bytes)
+    //println("download:  wrote " + bytes.length + " to " + file)
     (file, bytes)
   }
 
@@ -358,9 +377,17 @@ object Main {
         c.copy(maxDepth = x)).
         text("In combination with --ontIri, max depth for processing imported ontologies (0)")
 
-      opt[String]('l', "ontIris").optional().
+      opt[String]('f', "ontIris").optional().
         action((x, c) => c.copy(irisFilename = Some(x))).
         text(s"File with explicit list of ontology IRIs")
+
+      opt[String]("locResFrom").optional().
+        action((x, c) => c.copy(locResFrom = Some(x))).
+        text("'From' pattern for location resolution. Eg: http://sweetontology.net/(.*)")
+
+      opt[String]("locResTo").optional().
+        action((x, c) => c.copy(locResTo = Some(x))).
+        text("'To' replacement template for location resolution. Eg: https://raw.githubusercontent.com/ESIPFed/sweet/master/$1.ttl")
 
       opt[String]("orr").optional().
         action((x, c) => c.copy(orr = c.orr.copy(endpoint = Some(x)))).
