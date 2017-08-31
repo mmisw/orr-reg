@@ -318,12 +318,12 @@ class Main(opts: Opts) {
   }
 
   private def getActualIri(initialIri: String, ufi: UploadedFileInfo): (String, Option[PossibleOntologyInfo]) = {
-    ufi.possibleOntologyIris.get(initialIri) match {
+    ufi.possibleOntologyUris.get(initialIri) match {
       case x@Some(_) ⇒ (initialIri, x)
       case None ⇒
         replaceHttpScheme(initialIri) match {
           case Some(iri2) ⇒
-            ufi.possibleOntologyIris.get(iri2) match {
+            ufi.possibleOntologyUris.get(iri2) match {
               case x@Some(_) ⇒ (iri2, x)
               case None ⇒ (initialIri, None)
             }
@@ -349,7 +349,7 @@ class Main(opts: Opts) {
 case class UploadedFileInfo(userName: String,
                             filename: String,
                             format: String
-                            , possibleOntologyIris: Map[String, PossibleOntologyInfo]
+                            , possibleOntologyUris: Map[String, PossibleOntologyInfo]
                            )
 
 case class PossibleOntologyInfo(explanations: List[String],
