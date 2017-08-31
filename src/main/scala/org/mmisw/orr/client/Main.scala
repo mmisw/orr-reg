@@ -356,7 +356,7 @@ case class PossibleOntologyInfo(explanations: List[String],
                                 metadata: Map[String,List[String]])
 
 case class OntologyRegistrationResult(
-                                       iri:         String,
+                                       uri:         String,
                                        version:     Option[String] = None,
                                        visibility:  Option[String] = None,
                                        status:      Option[String] = None,
