@@ -304,9 +304,11 @@ class Main(opts: Opts) {
       .asString
 
     if (response.code != 200)
-      throw new Exception(s"failed to retrieve url=$url => ${response.code}: ${response.body}")
+      throw new Exception(s"failed to retrieve url=$url ⇒ ${response.code}: ${response.body}")
 
-    val file = new File("downloaded", url.replace('/', '|'))
+    val dir = new File("downloaded")
+    dir.mkdir()
+    val file = new File(dir, url.replace('/', '|'))
     import java.nio.charset.StandardCharsets
     import java.nio.file.Files
     val bytes = response.body.getBytes(StandardCharsets.UTF_8)
@@ -370,59 +372,59 @@ object Main {
       head("orr-reg", "0.0.1")
 
       opt[String]('o', "ontIri").optional().
-        action((x, c) => c.copy(ontIri = Some(x))).
+        action((x, c) ⇒ c.copy(ontIri = Some(x))).
         text(s"Ontology IRI")
 
-      opt[Int]('d', "depth").action((x, c) =>
+      opt[Int]('d', "depth").action((x, c) ⇒
         c.copy(maxDepth = x)).
         text("In combination with --ontIri, max depth for processing imported ontologies (0)")
 
       opt[String]('f', "ontIris").optional().
-        action((x, c) => c.copy(irisFilename = Some(x))).
+        action((x, c) ⇒ c.copy(irisFilename = Some(x))).
         text(s"File with explicit list of ontology IRIs")
 
       opt[String]("locResFrom").optional().
-        action((x, c) => c.copy(locResFrom = Some(x))).
+        action((x, c) ⇒ c.copy(locResFrom = Some(x))).
         text("'From' pattern for location resolution. Eg: http://sweetontology.net/(.*)")
 
       opt[String]("locResTo").optional().
-        action((x, c) => c.copy(locResTo = Some(x))).
+        action((x, c) ⇒ c.copy(locResTo = Some(x))).
         text("'To' replacement template for location resolution. Eg: https://raw.githubusercontent.com/ESIPFed/sweet/master/$1.ttl")
 
       opt[String]("orr").optional().
-        action((x, c) => c.copy(orr = c.orr.copy(endpoint = Some(x)))).
+        action((x, c) ⇒ c.copy(orr = c.orr.copy(endpoint = Some(x)))).
         text("ORR REST endpoint URL")
 
       opt[String]('u', "username").optional().
-        action((x, c) => c.copy(orr = c.orr.copy(username = Some(x)))).
+        action((x, c) ⇒ c.copy(orr = c.orr.copy(username = Some(x)))).
         text("Username")
 
       opt[String]('p', "password").optional().
-        action((x, c) => c.copy(orr = c.orr.copy(password = Some(x)))).
+        action((x, c) ⇒ c.copy(orr = c.orr.copy(password = Some(x)))).
         text("Password")
 
       opt[String]("action").optional().
-        action((x, c) => c.copy(action = Some(x))).
+        action((x, c) ⇒ c.copy(action = Some(x))).
         text("One of register, unregister, load.")
 
       opt[String]("ont-lib").optional().
-        action((x, c) => c.copy(ontLib = x)).
+        action((x, c) ⇒ c.copy(ontLib = x)).
         text("One of jena, owlapi (default: jena)")
 
       opt[String]("org").optional().
-        action((x, c) => c.copy(orr = c.orr.copy(orgName = Some(x)))).
+        action((x, c) ⇒ c.copy(orr = c.orr.copy(orgName = Some(x)))).
         text("Owning organization for registration (default: submitting user)")
 
       opt[String]('v', "visibility").optional().
-        action((x, c) => c.copy(orr = c.orr.copy(visibility = Some(x)))).
+        action((x, c) ⇒ c.copy(orr = c.orr.copy(visibility = Some(x)))).
         text("public or owner")
 
       opt[String]('s', "status").optional().
-        action((x, c) => c.copy(orr = c.orr.copy(status = Some(x)))).
+        action((x, c) ⇒ c.copy(orr = c.orr.copy(status = Some(x)))).
         text("Status")
 
       opt[Unit]("new-version").optional().
-        action((_, c) => c.copy(newVersion = true)).
+        action((_, c) ⇒ c.copy(newVersion = true)).
         text("Register new version if ontology already exists")
 
       help("help").text("Print this usage text")
