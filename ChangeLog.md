@@ -1,3 +1,8 @@
+2017-09-07
+
+- adjustment in request to register new version:
+  set Content-type:application/json, and put payload in body
+  
 2017-08-30 0.2.0
 
 - registration of the new SWEET ontologies (v3):

@@ -161,28 +161,26 @@ class Main(opts: Opts) {
         else if (postResponse.code == 409) {
           if (opts.newVersion) {
             println(s"    -> Already registered. Registering new version")
+            val data = writePretty(params.toMap)
             val putResponse: HttpResponse[String] = Http(route)
               .timeout(connTimeoutMs = 5*1000, readTimeoutMs = 60*1000)
-              .postForm(params)
-              .method("PUT")
               .auth(userName, password)
+              .postData(data)
+              .header("Content-type", "application/json")
+              .method("PUT")
               .asString
 
-            if (putResponse.code == 200) {
+            if (putResponse.code == 200)
               Some(putResponse)
-            }
-            else {
-              throw new Exception(s"error registering new version of iri=$actualIri: postResponse=" + putResponse)
-            }
+            else
+              throw new Exception(s"error registering new version of iri=$actualIri: putResponse=" + putResponse)
           }
           else {
             println(s"    -> Already registered.")
             None
           }
         }
-        else {
-          throw new Exception(s"error registering iri=$actualIri: postResponse=" + postResponse)
-        }
+        else throw new Exception(s"error registering iri=$actualIri: postResponse=" + postResponse)
       }
 
       responseOpt map {response ⇒
