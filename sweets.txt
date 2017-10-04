@@ -1,5 +1,5 @@
 # Contents below generated as follows:
-#   http -a carueda:$MYPW get 'http://cor.esipfed.org/ont/api/v0/ont' |
+#   http -a carueda:??? get 'http://cor.esipfed.org/ont/api/v0/ont' |
 #       jq '.[].uri' | sort | uniq | grep 'http://sweetontology.net/' > sweets.txt
 
 "http://sweetontology.net/human"
@@ -19,6 +19,7 @@
 "http://sweetontology.net/matrAerosol"
 "http://sweetontology.net/matrAnimal"
 "http://sweetontology.net/matrBiomass"
+"http://sweetontology.net/matrCompound"
 "http://sweetontology.net/matrElement"
 "http://sweetontology.net/matrElementalMolecule"
 "http://sweetontology.net/matrEnergy"
