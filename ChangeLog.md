@@ -1,3 +1,8 @@
+2017-10-26
+
+- add `ttl_conversion.sc` here.
+  (a copy is at https://gist.github.com/carueda/b032f85b5d80660f2158e55ca2e8b1ab)
+
 2017-09-07
 
 - adjustment in request to register new version:
